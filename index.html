@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zone Targeting Demo</title>
+<style>
+:root{--bg:#f9f9f7;--card:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--line:#e1e0d9;--ok:#006300;--bad:#d03b3b}
+@media (prefers-color-scheme:dark){:root{--bg:#0d0d0d;--card:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--line:#2c2c2a;--ok:#0ca30c;--bad:#e66767}}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px}
+h1{font-size:22px;margin:0 0 8px}p{color:var(--ink2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+code{font-size:13px}input{width:120px;padding:4px}
+</style></head><body><main>
+<h1>Таргетинг по зонам в custom_targeted_settings</h1>
+<p>Обе зоны A и B получают одинаковый Custom JSON:</p>
+<div class="card"><pre><code>{"fakepush":{"custom_targeted_settings":[
+  {"freq":1,"cap":24,"interval":600,"max":1,"targeting":{"zone":[A]}},
+  {"freq":20,"cap":0.1,"interval":1,"max":3,"targeting":{"exclude_zone":[B]}}
+]}}</code></pre>
+<p>Правильно: зона A получает первое правило (1/24/600/1). Зона B исключена из второго правила и получает базовые настройки зоны.
+Сейчас pushkin сравнивает таргетинг с зоной «0»: правило <code>zone:[A]</code> не срабатывает нигде, а <code>exclude_zone</code> не исключает никого, поэтому обе зоны получают 20/0.1/1/3.</p>
+<p>Страница запрашивает настройки тега <code>/400/&lt;зона&gt;?oo=1</code> у боевого pushkin, раскодирует их и сравнивает с ожиданием.</p>
+<form id="f">Зона A <input name="a"> Зона B <input name="b"> База B (freq,cap,interval,max) <input name="base" value="3,0.5,3,2"> <button>Проверить</button></form>
+</div>
+<div class="card"><table><thead><tr><th>Зона</th><th>Параметр</th><th>Если бага нет</th><th>Если баг есть</th><th>Пришло</th><th>Вывод</th></tr></thead><tbody id="out"><tr><td colspan="6">Укажите зоны (или ?a=…&amp;b=… в адресе)</td></tr></tbody></table></div>
+<div class="card"><b>Контроль декодера.</b> Реальная зона без правил: <span id="ref">…</span></div>
+</main>
+<script>
+const HOST="https://axgbr.com";
+const A_="YzR(vh&ekK7r-]syW5=9lH^3qS~MwEoZ*6#:i}NBtAcpV1)4T_0mjUO[xQJuCG2ndP!XI/LDF@8fb|ga,",M={".":0,"%":2,"{":3};
+function strN(s){let o="",m=1;for(const c of s){if(c in M){m=M[c];continue}o+=String.fromCharCode(m*81+A_.indexOf(c));m=1}return o}
+async function opts(z){const t=(await (await fetch(`${HOST}/400/${z}?oo=1`)).text()).trim();let j=JSON.parse(t);if(typeof j==="string")j=JSON.parse(strN(j));
+ return [j.fakepushFreq,j.fakepushCap,j.fakepushInterval,j.fakepushMax]}
+const K=["freq","cap","interval","max"],BUG=[20,0.1,1,3];
+function rows(z,label,good,got){const fixed=got.every((v,i)=>v==good[i]),bug=got.every((v,i)=>v==BUG[i]);
+ return K.map((k,i)=>`<tr>${i?"<td></td>":`<td rowspan=1><b>${label}</b> ${z}</td>`}<td>${k}</td><td>${good[i]}</td><td>${BUG[i]}</td><td>${got[i]}</td>${i?"<td></td>":`<td class="${fixed?"ok":"bad"}">${fixed?"работает":bug?"баг: правило по зоне не учтено":"неожиданно"}</td>`}</tr>`).join("")}
+async function run(a,b,base){const out=document.getElementById("out");out.innerHTML="<tr><td colspan=6>Запрос…</td></tr>";
+ try{const [ga,gb]=await Promise.all([opts(a),opts(b)]);out.innerHTML=rows(a,"A",[1,24,600,1],ga)+rows(b,"B",base,gb)}
+ catch(e){out.innerHTML=`<tr><td colspan=6 class=bad>Ошибка: ${e}</td></tr>`}}
+const q=new URLSearchParams(location.search),f=document.getElementById("f");
+for(const n of["a","b","base"])if(q.get(n))f[n].value=q.get(n);
+f.onsubmit=e=>{e.preventDefault();run(f.a.value,f.b.value,f.base.value.split(",").map(Number))};
+if(q.get("a")&&q.get("b"))f.requestSubmit();
+opts(12197348).then(v=>document.getElementById("ref").textContent=`12197348 → freq ${v[0]}, cap ${v[1]}, interval ${v[2]}, max ${v[3]} (в ADP: 5, 0.3, 3, 2)`).catch(e=>document.getElementById("ref").textContent="ошибка: "+e);
+</script></body></html>
